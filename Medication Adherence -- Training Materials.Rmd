@@ -1,0 +1,136 @@
+---
+title: "Medication Adherence:  Training Material"
+author: "Rohit Shivthare"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+Our team was engaged by a health insurance company looking to improve medication adherence among heart disease patients. The client provided longitudinal prescription records for a sample of patients diagnosed with heart disease.
+
+The adherence data captures when patients filled prescriptions for three key medications - ACE inhibitors, beta blockers, and statins. Each patient has multiple records spanning from their diagnosis date to end of follow-up. 
+The second is about their baseline measurements like age, gender, region, diabetes, baseline condition. It has one row per patient. There are 50,000 unique patients.
+
+In this project, I encountered multiple challenges. In this report, I will share three most important skills to tackle these challenges.
+
+#### Key Skills and Tips for Working with Project Data
+
+**Data Handling and Pre Processing:**
+
+1. **Challenges:**
+   The project involved two datasets, and certain questions necessitated joint analysis.
+
+2. **Skills Needed:**
+   Proficiency in data table merging to identify common columns and determine whether to retain multiple records per ID or consolidate to one row per ID.
+
+3. **Solution:**
+   I employed the merge function to combine datasets based on a common column, in this case, the patient ID. The resulting dataset, named adherence_filtered, provided comprehensive information about patients with one year of data and their baseline measurements.
+
+```{r, eval=FALSE}  
+merged_data <- merge(adherence, baseline, by = id.name)
+```
+
+```{r, eval=FALSE}
+data_impact_adherence <- merge(baseline, patients_1_year[, .(id, medicine_adherence)], by = id.name)
+```
+
+**Using Aggregations for Calculations:**
+
+1. **Challenges:**
+   The structure of certain columns didn't align with the analysis requirements. For instance, to calculate the medicine adherence for each medication (ace, bb, statin) or to caluclate the duration for filled prescription or getting maximum t2 value for each patient in the dataset
+
+2. **Skills Needed:**
+   Proficiency in creating meaningful aggregations to simplify calculations.
+   
+3. **Solution:**
+   
+   I created a new column "medicine_adherence" which caluclated the sum of each instance of medicine (ace/bb/statin) to be 1 divided by the duration of the days of the patient
+
+```{r, eval=FALSE}
+    patients_1_year[, medicine_adherence := sum(get(med.name)) / (max(get(t2.name)) - min(get(t1.name))), by = .(id)]
+```
+    
+New column for duration which is t2 - t1 which helps in calculating the duration of days for filled prescription
+
+```{r, eval=FALSE} 
+    filled_patients[, duration := get(t2.name) - get(t1.name)]
+```
+
+New column to get maximum value of t2 for each patient
+    
+```{r, eval=FALSE}
+    adherence[, max_t2 := max(get(t2.name)), by = get(id.name)]
+```
+   
+**Other Skills**
+     
+**Use Constant Variables:**
+   Store any value that will be repeatedly used as a constant variable. This promotes code readability and makes updates more manageable.
+   
+```{r, eval=FALSE}
+  id.name <- "id"
+  t1.name <- "t1"
+  t2.name <- "t2"
+  ace.name <- "ace"
+  bb.name <- "bb"
+  statin.name <- "statin"
+```
+
+**Create Self-contained Functions:**
+   Ensure functions are self-contained, minimizing reliance on outside variables. This enhances the function’s utility for reuse and simplifies debugging.
+   
+   1. Define a function to caluclate early fill percent
+   
+```{r, eval=FALSE}
+  calculate_early_fill_percentage <- function(med.name, two.weeks.days){
+  
+  # Filter to first 14 days  
+  early_fill_patients <- adherence[get(t1.name) < two.weeks.days]
+  
+  # Get unique patients
+  unique_early_fill_patients <- unique(early_fill_patients$id)
+  
+  # Identify bb fills
+  bb_fills <- early_fill_patients[get(med.name) == 1] 
+  
+  # Count unique bb patients
+  bb_patients <- unique(bb_fills$id)
+  
+  # Calculate percentage
+  early_fill_percent <- round.numerics(length(bb_patients)/length(unique_early_fill_patients) * 100, 1)
+  
+  return(early_fill_percent)
+  }
+```
+  
+  2. Define a function to fit linear model
+  
+```{r, eval=FALSE}
+  linear_adherence_model <- function(med.name) {
+ 
+  # Calculate medicine adherence
+  patients_1_year[, medicine_adherence := sum(get(med.name)) / (max(get(t2.name)) - min(get(t1.name))),     by = .(id)]
+  
+  # Merge adherence and baseline datasets on id.name
+  data_impact_adherence <- merge(baseline, patients_1_year[, .(id, medicine_adherence)], by = id.name)
+  
+  # Fit linear regression models for each medication
+  lm_adherence_model <- lm(medicine_adherence ~ diabetes + age + gender + region + baseline.condition,     data = data_impact_adherence)
+  
+  return(lm_adherence_model)
+}
+```
+
+**Efficient Variable Usage:**
+   Store values in variables rather than using hard-coded constants, promoting code maintainability, and reducing redundancy in variable use.
+   
+```{r, eval=FALSE}
+one.year.days <- 365
+two.weeks.days <- 14
+```    
+
+  
+
