@@ -1,0 +1,194 @@
+---
+title: "Medication Adherence:  Independent Investigation"
+author: "Rohit Shivthare"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, results='asis', fig.align='center', fig.cap = TRUE)
+```
+
+```{r seed}
+set.seed(41)
+```
+
+```{r libraries, warning =FALSE, message= FALSE}
+library(data.table)
+library(DT)
+library(lmtest)
+library(dplyr)
+library(ggplot2)
+```
+
+```{r constants}
+# Adherence data columns
+id.name <- "id"
+t1.name <- "t1"
+t2.name <- "t2"
+ace.name <- "ace"
+bb.name <- "bb"
+statin.name <- "statin"
+
+# Baseline Measurements columns
+age.name <- "age"
+gender.name <- "gender"
+region.name <- "region"
+diabetes.name <- "diabetes"
+baseline.condition.name <- "baseline.condition"
+
+# Days
+one.year.days <- 365
+two.weeks.days <- 14
+```
+
+```{r functions}
+round.numerics <- function(x, digits){
+  if(is.numeric(x)){
+    x <- round(x = x, digits = digits)
+  }
+  return(x)
+}
+```
+
+```{r load_data}
+# Reading adherence and baseline measurements datasets
+adherence = fread("../Data/adherence.csv")
+
+baseline = fread("../Data/baseline measurements.csv")
+
+# Merging baseline data with adherence
+merged_data <- merge(adherence, baseline, by = id.name)
+```
+
+```{r explore_data, eval = FALSE}
+# To understand the structure of both the datasets
+str(adherence)
+str(baseline)
+
+# First 5 records for both the datasets
+head(adherence)
+head(baseline)
+
+# Records for a random Patient ID
+adherence[,id == "KQ68Ubs0yMY5ID5a",]
+
+adherence %>%
+  filter(id == "KQ68Ubs0yMY5ID5a") %>%
+  select(id,t1,t2,ace,bb,statin)
+
+# To know the unique values
+unique(adherence$id)
+unique(baseline$region)
+unique(baseline$diabetes)
+unique(baseline$gender)
+unique(baseline$diabetes)
+```
+### Independent Analysis
+
+```{r Filtering patient data for over a year}
+# Getting the patients for over one year
+patients_1_year <- adherence[,.SD[max(get(t2.name)) - min(get(t1.name)) > one.year.days], by=get(id.name)]
+
+# Calculate medicine adherence
+patients_1_year[, medicine_adherence_ace := sum(get(ace.name)) / (max(get(t2.name)) - min(get(t1.name))), by = get(id.name)]
+patients_1_year[, medicine_adherence_bb := sum(get(bb.name)) / (max(get(t2.name)) - min(get(t1.name))), by = get(id.name)]
+patients_1_year[, medicine_adherence_statin := sum(get(statin.name)) / (max(get(t2.name)) - min(get(t1.name))), by = get(id.name)]
+
+# Merge adherence and baseline datasets on id.name
+data_impact_adherence <- merge(baseline, patients_1_year[, .(id, medicine_adherence_ace, medicine_adherence_bb, medicine_adherence_statin)], by = id.name)
+
+```
+
+#### Independent Analysis Question 1 - Does age and gender have an impact on adherence rate of ACE Inhibitors, Beta Blockers and Statins?
+
+```{r IP1}
+# Fit linear regression model for adherence with age and gender
+model_age_gender_ace <- lm(medicine_adherence_ace ~ age + gender, data = data_impact_adherence)
+model_age_gender_bb <- lm(medicine_adherence_bb ~ age + gender, data = data_impact_adherence)
+model_age_gender_statin <- lm(medicine_adherence_statin ~ age + gender, data = data_impact_adherence)
+
+# Display model summary
+summary_age_gender_ace <- summary(model_age_gender_ace)
+
+summary_age_gender_bb <- summary(model_age_gender_bb)
+
+summary_age_gender_statin <- summary(model_age_gender_statin)
+
+# Create age groups
+data_impact_adherence$age_group <- cut(data_impact_adherence$age, breaks = c(seq(30, 90, by = 20), Inf))
+```
+
+##### Bar plot for Ace Inhibitors adherence vs age group and gender
+
+We can notice that Females tend to be more adherent in the yonger age group {30 - 50 years} while Males are more adherent in the elder age group 50+ onwards in each of the medications (ACE Inhibitors, Beta Blockers and Statins)
+
+```{r bar_plot_age_gender_ace}
+ggplot(data_impact_adherence, aes(x = age_group, y = medicine_adherence_ace, fill = gender)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "Age Group", y = "Ace Adherence", title = "Ace Adherence vs Age Group and Gender") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels for better readability
+```
+
+##### Bar plot for Beta Blockers adherence vs age group and gender
+
+```{r bar_plot_age_gender_bb}
+ggplot(data_impact_adherence, aes(x = age_group, y = medicine_adherence_bb, fill = gender)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "Age Group", y = "Bb Adherence", title = "Bb Adherence vs Age Group and Gender") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels
+```
+
+##### Bar plot for Statin adherence vs age group and gender
+
+```{r bar_plot_age_gender_statin}
+ggplot(data_impact_adherence, aes(x = age_group, y = medicine_adherence_statin, fill = gender)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "Age Group", y = "Statin Adherence", title = "Statin Adherence vs Age Group and Gender") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels
+```
+
+#### Independent Analysis Question 2 - Does diabetes and baseline condition have an impact on adherence rate of ACE Inhibitors, Beta Blockers and Statins?
+
+```{r IP2}
+# Fit linear regression model for adherence with diabetes and baseline condition
+model_diabetes_baseline_ace <- lm(medicine_adherence_ace ~ diabetes + baseline.condition, data = data_impact_adherence)
+model_diabetes_baseline_bb <- lm(medicine_adherence_bb ~ diabetes + baseline.condition, data = data_impact_adherence)
+model_diabetes_baseline_statin <- lm(medicine_adherence_statin ~ diabetes + baseline.condition, data = data_impact_adherence)
+
+# Display model summary
+summary_diabetes_baseline_ace <- summary(model_diabetes_baseline_ace)
+
+summary_diabetes_baseline_bb <- summary(model_diabetes_baseline_bb)
+
+summary_diabetes_baseline_statin <- summary(model_diabetes_baseline_statin)
+
+# Function to create boxplots
+create_boxplot <- function(medication) {
+  ggplot(data_impact_adherence, aes(x = diabetes, y = get(paste0("medicine_adherence_", medication)))) +
+    geom_boxplot() +
+    labs(x = "Diabetes", y = "Adherence Rate", title = paste("Diabetes vs.", medication, "Adherence")) +
+    theme_minimal() +
+    facet_wrap(~baseline.condition, scales = "free_y")
+}
+```
+
+##### Create boxplots for each medication
+
+We can observe from the below box plots that:
+1. Patients with a baseline condition of major heart attack/operation tend to be more adherent as compared to patients with a baseline condition of moderate symptoms or light procedure.
+2. Patients with diabetes tend to be more adherent as compared to patients without diabetes
+
+```{r box_plot_ace, warning=FALSE}
+create_boxplot(ace.name)
+```
+
+```{r box_plot_bb, warning=FALSE}
+create_boxplot(bb.name)
+```
+
+```{r box_plot_statin, warning=FALSE}
+create_boxplot(statin.name)
+```
